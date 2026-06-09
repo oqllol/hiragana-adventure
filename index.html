@@ -179,24 +179,10 @@ const MOVE_SPEED = 230;
 const mobileInput = { left: false, right: false, jump: false };
 
 /* ============================================================
-   音声読み上げ用: 日本語ボイスを事前に読み込む
-   (iOS Safari は getVoices() が非同期で空のことがあるため)
+   音声クリップ (Kyoko の読み上げを MP3 化して埋め込み)
+   iOS では speechSynthesis が不安定なため、BGM と同じ Web Audio で再生する。
    ============================================================ */
-let cachedVoices = [];
-function loadVoices() {
-  if (!('speechSynthesis' in window)) return;
-  cachedVoices = speechSynthesis.getVoices() || [];
-}
-if ('speechSynthesis' in window) {
-  loadVoices();
-  speechSynthesis.onvoiceschanged = loadVoices;
-}
-function getJapaneseVoice() {
-  if (!cachedVoices.length) loadVoices();
-  return cachedVoices.find(v => v.lang === 'ja-JP') ||
-         cachedVoices.find(v => v.lang && v.lang.toLowerCase().startsWith('ja')) ||
-         null;
-}
+const VOICE_CLIPS = {"りんご": "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", "り": "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYyLjMuMTAwAAAAAAAAAAAAAAD/83DAAAAAAAAAAAAAWGluZwAAAA8AAAAKAAAFfQBQUFBQUFBQUFBeXl5eXl5eXl5ehISEhISEhISEhKGhoaGhoaGhoaG4uLi4uLi4uLi40NDQ0NDQ0NDQ0OPj4+Pj4+Pj4+P29vb29vb29vb2+/v7+/v7+/v7+/////////////8AAAAATGF2YzYyLjExAAAAAAAAAAAAAAAAJAPFAAAAAAAABX3ks9kwAAAAAAAAAAAAAAAAAP/zkMQABDgGdkFBAAEEJ24AAAHRx5AAEAAGHh4eHpcMkQqApgAAAAABgM7SFMAF/7I6t1qQ3CiC3Yb/3Mp1YXk4gkOF////5wy3/0BhVQAAOizSr0zxrsjmrclQBdGVcUBtOqWCqXbcyKWYA8UDywGHgStw0IaSrRSEoOR4BQN00y4qlIvIFAjaOFcJyjnyPy7ij1HscpKGV+qUnbMpPxM6scMO99uBOynYjTTnZ0WcZOB5mOa0MT+MP6I8mfslE8Jgwhfil5mOc60AHRtdkuhqtlVyNWUIZ2fEGfT831tuOhUR9b7HOr1GgBDjYQpHXyyrNH0RTK9IrqJCz/i1vnd77vv0pv/zMMTnC9hmrxmYEAS/9773be9ysFRC4m1fE4Hf/5boXGIUYAEnLuO0Xt/8Y1VhC0hNM39iBFpF9rNhJK4jwT2EbfR8CQB6cFSKcUv1Hf/zgMT4Mzqyqn+aeSAn5wvfzOceQ0HhGCc9EOE44vEUH57Y+aj5p70OQ8cae5VTjFep+jo3//sY1D0Y9T00////Rn+hkyYcqqiO6okxjyDD5xlCB9SS4MMv5RlCiBcGx5c+B8AyeZjgAWrT6yxoCxNW6rrWyEhdem3h2kfL/3vI4swMwqAfmjHopRxNH1drLil/vMqaW/70ViP//zr/+C8/pQ3UHf+p+i4OGNbTqHRd0eool8OefemyJDKcVOOKJnD4sLuY9msrV//q7XUXKRD/82DE7iBDXr5/zzgA5gMhYodME17P/q0E0DSjz8NFHSit3R2aXrvEdaAxXiqngAJ2O8SX8qQ8f2gkLA9f/L0vdPizAWG+fATgmtdX2/J7EpSbAwN/wIAn+XDgLaf1/wano4Qnu8CgTmPZAoAit2SKGwYPhx5hRlOcqaqRv////ZXuszmRjvt////78ye79LOVKkSecTlI7/+iaoX/81DE/CIaZqXcw8rcYEsiXqewD99vq356nDr2wHSCCe28ToNRraJkt2rlLbhIKv9bRXP9jExrzMn01KUr5lnayKhTUFI5AJS/1IZ2e6//LX+rd3Kils1YoOhqKFn///sffERWRuCp1X7fEX5ZwAFmJh/AX/qI26YEIgY2mAAwWq0O//NQxOgco16+fnoFMGJR8VJRho7TcBUuHONfyqxmpfBXyVol1hoGwVAQSNVnQVcGgL24NaMs0lBUSkQk8NLGgKGv6v76/b8O96rUMGmKJUxBTUVMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqv/zQMTqF/JOwn56RJSqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//NAxOUUSOqWfloGbKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xDE7gFAAlgAAAABqqqqqqqqqqqqqqqqqv/zEMTyAAAD/AAAAACqqqqqqqqqqqqqqqqq", "ん": "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYyLjMuMTAwAAAAAAAAAAAAAAD/83DAAAAAAAAAAAAAWGluZwAAAA8AAAAIAAAE4gBaWlpaWlpaWlpaWlqQkJCQkJCQkJCQkJCqqqqqqqqqqqqqqqqqxcXFxcXFxcXFxcXF5eXl5eXl5eXl5eXl5fX19fX19fX19fX19fr6+vr6+vr6+vr6+vr///////////////8AAAAATGF2YzYyLjExAAAAAAAAAAAAAAAAJAPGAAAAAAAABOIyd2rHAAAAAAAAAAAAAAAAAP/zkMQACfAGgl9AAAABGOWAAfbYAFwfeCAPpLg+BAQBCUB9///9YOHPP/wffqBB3/wff/BBAAODa0Ek3DwXFpgERewzR59gpQgoQ2GdmMHKxCMCHOFomIDA4goSW/X+jaCns7gdzkyY62rMIZkzX3HQFQxA6qMPU7Y0Jaa8mpaVxmmxeUQ05TjtMWPLnch6WXaJsjT2x1r01UsWHfzt8jstkPJmM4crzWVy5Yj7jqaSCffyk4uymjWPKmGoamYGhOUpjl6NR3JlkgprH2OdqVMM8qWkjU1WxylW68smotKu75l++fv/3ZvXsqeX0/Pw7nK4T2Ua7lr8t5dx+trCta/////////zkMTQPXO+ib+awQH///n8NzljDLnZZLML+rFvWEP291YZjOsb01av1ed3j929es6eSQAMZEi7b+b26TBjzrByre2eStUSRT9SPT6U1Le+CINhm9q0ChphY6mMjOhS2nc51GoJIquqNI8hmU53QXdrIx50EhUqjGKv/+d+cXOWjzICCDiad8cA4+Rg+BAu7L7UEMlVE2t+oqovSBLduA2pnoxYHtiQk8GovZIoKLOyo9dy7mjjrl9L1fjfpo65eDDL4HSXW0nkGVfonuWxALCDGC3i4+zx9pbQkvH/IveWL0WLnwQE7lv///4YB94YHFzgekxAGCBQoMyO7/9XP1QqoG8bUf/zUMTSE6nCjlnZKAGJyjQyJ7pGwFxWjRvhVJ4g6blBodnHKZKm1fMNFXWwtOQ0Le808vVykQ3Gvf8JRUli4UBuWHhTyqTMjpIcRipIoRw+RxmfQwePHFxNMlfyiTLDCqkwQnYjGMNS1bn//////////0mXlrGxiylyHoemh8JFDo//81DE+B0CKoIeDpAUOYbR9jSVB4Hzig5L//11RYablul/wBM4gmCpYMfaqfGOCtdi0afGJAIeEgKQEsSljqw0SEwNFQV1nQ0DIK0qcsBAWVUeUMDpVwTcWf4NPLdBFPiIrpt/q8rKxEpMQU1FTEFNRTMuMTAwqqqqqqqqqqqqqqqq//NgxPkkm2aSvsJQpKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MwxPUTGG6RvgsMAKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MQxOkAAAP8AAAAAKqqqqqqqqqqqqqqqqr/8xDE8gAAA0gAAAAAqqqqqqqqqqqqqqqqqg==", "ご": "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYyLjMuMTAwAAAAAAAAAAAAAAD/83DAAAAAAAAAAAAAWGluZwAAAA8AAAAKAAAFfQBQUFBQUFBQUFBoaGhoaGhoaGhohISEhISEhISEhKGhoaGhoaGhoaG4uLi4uLi4uLi4y8vLy8vLy8vLy+Pj4+Pj4+Pj4+Px8fHx8fHx8fHx+/v7+/v7+/v7+/////////////8AAAAATGF2YzYyLjExAAAAAAAAAAAAAAAAJANDAAAAAAAABX3mB1wjAAAAAAAAAAAAAAAAAP/zkMQAA0gCnmAAAADA2+QCgU5h9FxSH/8PqmEKCE7vqjnLE3lAtBykxojhwJRbFDIl4IFFPszihc+KkUMryB0ZCbVkINNP6U8gUr0q+ndDzG3O8Y8kMADH//LGzGcDHITIRjnc7/6p8/1qd1Vsin////9GRjnQQoG4EWH5E//+hucw+GLgrOyT/3t+6xVmDTc7YiCgUUQHPx1RYxYuOOPEJLUpQqmYWIgJEex9KRiaXbotOlcLZ8zxkMQlRJIIJsvb9VT5aigosETMORzy0stTv3/6M7ziAoIi7ig8YwghyEP+nyKSzB5UEgMIjjFUgs0pf//sr/Z9/////pd2ViiCIoow9P/zUMTqGnM+jl5ARYhhEcJsPFQkoWAtKf/1wHUB+kK73J1wXc8u4CEIULItzbcDIrB+Sze1KGJm8DA8LrKRS4aUwvPHcBIwY/54eQl/jyCJU8JCArqCDf/BsWfqjwc+WH7/RUriVQQDpWXC0kAnmyQ2G7DeiglwS7a9SB2MNFDifUz/82DE9SObXqJe2wsENbf7aWI1j9Oc8/O///////+63Q+qGSY8SxEHYIEO4uiACA3/Ru/X0+Vj6qIaMOeWUdCq1Q2se0ghoxKxnKILCDWv8xJcBJq0CKEZRpQQBYspFAqHj5X6Ycv3Fl8Rf9FL6AAJf7GZZBICilGQsCUO9Hrwi/PLyliTZq7WqmQaFAUCLP//9dFiFEi6QksYsrP/82DE9SGDYp2+0sUYd6CYkagwOWCIADPtEr9tZq/9ccO6vO3IYGkuPuSQwnoAms0SG/BGxmxb3UgchevjR2E5Ze/fxi4uN3+2dQ1qcIKkZUfOiIQimL5vcQzJUx12fdFVWuUzzlSv9P5F0qZ3NmkBgYhR///xAxQDBAWFC6lBYiOYSOG0vEKAApWk/YKlNa4z8tFB+s3AV3CJ7J3/81DE/h1yQq2+w0bsw0rOg3clDSlul/mbSmWR1aSYMVe51KeHaK9Ys67uVVI1jNnl/yGdPLPhwm1qx7MxmZmsdZrD9qanzROiL/ZUJfBcr///1tQwg6hFwdY5W64rgABnzbulEXTgKkrRZKkdq7AA3C+e/SFm4jQGib0uCLGxVZYV//NAxP0cukKyXsPEsCrg1hxQcNPVMCwd8sPPSyjy9Z68sp/+SLHhYJhqVd///+p6wVI4V3eKvWqiRyygTglCa60tnE/Id2UlDBcqTEFNRTMuMTBMQU1FMy4xMDCqqqqqqqqqqqqqqqr/81DE5Rl5tpz+wM0wqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MwxPQTmI6RHkPSSKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MgxOYEoD5+QDBGAaqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqv/zEMTyAAAD/AAAAACqqqqqqqqqqqqqqqqq", "ちがうよ": "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"};
 
 /* ============================================================
    BGM (Web Audio API で生成 - 著作権フリー)
@@ -209,6 +195,8 @@ class BGM {
     this.muted = false;
     this.timeoutId = null;
     this.targetVolume = 0.07;
+    this.voiceGain = null;
+    this.voiceBuffers = {};   // デコード済み音声のキャッシュ
   }
 
   init() {
@@ -224,6 +212,43 @@ class BGM {
     filter.frequency.value = 2400;
     this.masterGain.connect(filter);
     filter.connect(this.ctx.destination);
+    // 読み上げ音声用 (BGMより大きめ・フィルターを通さずクリアに)
+    this.voiceGain = this.ctx.createGain();
+    this.voiceGain.gain.value = 1.0;
+    this.voiceGain.connect(this.ctx.destination);
+  }
+
+  // base64文字列 → ArrayBuffer
+  _b64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  // 単語の読み上げ音声を再生 (BGMを一時的に下げる)
+  playVoice(word) {
+    this.init();
+    if (!this.ctx || this.muted) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    const clips = (typeof VOICE_CLIPS !== 'undefined') ? VOICE_CLIPS : null;
+    if (!clips || !clips[word]) return;
+    const playBuf = (buf) => {
+      this.duck();
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(this.voiceGain);
+      src.onended = () => this.unduck();
+      src.start();
+    };
+    if (this.voiceBuffers[word]) { playBuf(this.voiceBuffers[word]); return; }
+    try {
+      const ab = this._b64ToArrayBuffer(clips[word]);
+      this.ctx.decodeAudioData(ab, (buf) => {
+        this.voiceBuffers[word] = buf;
+        playBuf(buf);
+      }, () => {});
+    } catch (e) {}
   }
 
   start() {
@@ -486,17 +511,7 @@ class TitleScene extends Phaser.Scene {
     });
 
     btnBg.on('pointerdown', () => {
-      // iOS: ユーザー操作中に一度発話して読み上げ機能をロック解除する。
-      // volume:0 だと iOS では解除されないことがあるため、無音に近い空白を通常音量で発話する。
-      if ('speechSynthesis' in window) {
-        try {
-          loadVoices();
-          speechSynthesis.cancel();
-          const u = new SpeechSynthesisUtterance(' ');
-          u.lang = 'ja-JP';
-          speechSynthesis.speak(u);
-        } catch (e) {}
-      }
+      // ユーザー操作のうちに AudioContext を起動 (iOSの自動再生制限対策)。
       bgm.start();
       this.scene.start('GameScene');
     });
@@ -798,27 +813,9 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // 埋め込み音声(Kyoko)をBGMと同じWeb Audioで再生する。iOSでも確実に鳴る。
   speak(text) {
-    if (!('speechSynthesis' in window)) return;
-    try {
-      // iOS: cancel() の直後に speak() すると発話ごとキャンセルされることがあるため、
-      // 実際に発話中/待機中のときだけ止める。
-      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ja-JP';
-      const jaVoice = getJapaneseVoice();
-      if (jaVoice) u.voice = jaVoice;
-      u.rate = 0.85;
-      u.pitch = 1.15;
-      // BGM を一時的に下げる
-      bgm.duck();
-      u.onend = () => bgm.unduck();
-      u.onerror = () => bgm.unduck();
-      speechSynthesis.speak(u);
-    } catch (e) {
-      console.warn('Speech failed', e);
-      bgm.unduck();
-    }
+    bgm.playVoice(text);
   }
 
   update() {
