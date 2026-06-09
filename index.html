@@ -82,7 +82,33 @@
   }
   #btn-jump:active { box-shadow: 0 2px 0 #f59f00, 0 4px 6px rgba(0,0,0,0.12); }
   @media (max-width: 900px), (pointer: coarse) {
-    #mobile-controls { display: flex; }
+    /* スマホ: ゲームを画面いっぱいに表示し、ボタンは画面上に重ねる */
+    body { padding: 0; justify-content: flex-start; }
+    h1, .hint { display: none; }
+    #game-container {
+      border-radius: 0;
+      box-shadow: none;
+      width: 100vw;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #9bd6f5;
+    }
+    #game-container canvas { border-radius: 0; }
+    #mobile-controls {
+      display: flex;
+      position: fixed;
+      left: 0; right: 0;
+      bottom: calc(10px + env(safe-area-inset-bottom));
+      width: auto;
+      max-width: none;
+      margin-top: 0;
+      padding: 0 calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left));
+      z-index: 50;
+      pointer-events: none;
+    }
+    .mobile-btn { pointer-events: auto; opacity: 0.9; }
   }
   .hint { margin-top: 10px; font-size: 13px; color: #888; }
   
@@ -129,7 +155,12 @@
    ============================================================ */
 
 const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
+const BASE_HEIGHT = 600;
+// スマホ縦持ちでも余白なく画面を埋めるため、画面の縦横比から描画高さを決める。
+// 増えた分(VOFFSET)は上部の空にして、地面・足場・プレイヤーは画面下に寄せる。
+const _ar = window.innerHeight / Math.max(window.innerWidth, 1);
+const GAME_HEIGHT = Math.max(BASE_HEIGHT, Math.min(1600, Math.round(GAME_WIDTH * _ar)));
+const VOFFSET = GAME_HEIGHT - BASE_HEIGHT;
 const WORLD_WIDTH = 1600;
 
 const TARGET_WORD = ['り', 'ん', 'ご'];
@@ -403,37 +434,39 @@ class TitleScene extends Phaser.Scene {
   constructor() { super('TitleScene'); }
 
   create() {
+    const vo = VOFFSET;          // 地面を画面下に寄せる量
+    const mo = VOFFSET * 0.5;    // メニューを縦中央寄りにする量
     this.cameras.main.setBackgroundColor('#9bd6f5');
     for (let i = 0; i < 5; i++) {
       const x = 80 + i * 160 + Math.random() * 40;
       const y = 70 + Math.random() * 70;
       this.drawCloud(x, y);
     }
-    this.add.rectangle(GAME_WIDTH / 2, 580, GAME_WIDTH, 40, 0x8B5A2B)
+    this.add.rectangle(GAME_WIDTH / 2, 580 + vo, GAME_WIDTH, 40, 0x8B5A2B)
       .setStrokeStyle(2, 0x5A3A1B);
-    this.add.rectangle(GAME_WIDTH / 2, 562, GAME_WIDTH, 10, 0x52c41a);
+    this.add.rectangle(GAME_WIDTH / 2, 562 + vo, GAME_WIDTH, 10, 0x52c41a);
 
-    this.add.text(GAME_WIDTH / 2, 160, 'ひらがなで\nことばを つくろう！', {
+    this.add.text(GAME_WIDTH / 2, 160 + mo, 'ひらがなで\nことばを つくろう！', {
       fontSize: '52px', color: '#ff6b6b',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900',
       align: 'center', stroke: '#ffffff', strokeThickness: 8
     }).setOrigin(0.5);
 
-    const wordBg = this.add.rectangle(GAME_WIDTH / 2, 340, 260, 90, 0xffffff);
+    const wordBg = this.add.rectangle(GAME_WIDTH / 2, 340 + mo, 260, 90, 0xffffff);
     wordBg.setStrokeStyle(5, 0xffd93d);
-    this.add.text(GAME_WIDTH / 2, 340, TARGET_WORD.join(''), {
+    this.add.text(GAME_WIDTH / 2, 340 + mo, TARGET_WORD.join(''), {
       fontSize: '54px', color: '#5c3a00',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
     }).setOrigin(0.5);
-    this.add.text(GAME_WIDTH / 2, 410, '↑ この ことばを あつめよう', {
+    this.add.text(GAME_WIDTH / 2, 410 + mo, '↑ この ことばを あつめよう', {
       fontSize: '22px', color: '#333',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '700'
     }).setOrigin(0.5);
 
-    const btnBg = this.add.rectangle(GAME_WIDTH / 2, 500, 260, 76, 0xff6b6b);
+    const btnBg = this.add.rectangle(GAME_WIDTH / 2, 500 + mo, 260, 76, 0xff6b6b);
     btnBg.setStrokeStyle(4, 0xc92a2a);
     btnBg.setInteractive({ useHandCursor: true });
-    const btnText = this.add.text(GAME_WIDTH / 2, 500, 'はじめる', {
+    const btnText = this.add.text(GAME_WIDTH / 2, 500 + mo, 'はじめる', {
       fontSize: '34px', color: '#ffffff',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
     }).setOrigin(0.5);
@@ -480,12 +513,12 @@ class GameScene extends Phaser.Scene {
 
     // 遠景の丘
     for (let i = 0; i < 7; i++) {
-      this.add.ellipse(i * 260 + 100, 555, 340, 170, 0x8FBC8F, 0.55);
+      this.add.ellipse(i * 260 + 100, 555 + VOFFSET, 340, 170, 0x8FBC8F, 0.55);
     }
-    // 雲
-    for (let i = 0; i < 12; i++) {
+    // 雲 (広がった空全体に散らす)
+    for (let i = 0; i < 12 + Math.round(VOFFSET / 60); i++) {
       const x = Math.random() * WORLD_WIDTH;
-      const y = 40 + Math.random() * 130;
+      const y = 40 + Math.random() * (130 + VOFFSET);
       this.add.circle(x, y, 28, 0xffffff, 0.9);
       this.add.circle(x + 24, y - 10, 24, 0xffffff, 0.9);
       this.add.circle(x + 48, y, 28, 0xffffff, 0.9);
@@ -494,9 +527,9 @@ class GameScene extends Phaser.Scene {
     this.platforms = this.physics.add.staticGroup();
     // 地面
     for (let x = 0; x < WORLD_WIDTH; x += 80) {
-      this.makeStaticPlatform(x + 40, 580, 80, 40, 0x8B5A2B);
+      this.makeStaticPlatform(x + 40, 580 + VOFFSET, 80, 40, 0x8B5A2B);
     }
-    this.add.rectangle(WORLD_WIDTH / 2, 562, WORLD_WIDTH, 10, 0x52c41a);
+    this.add.rectangle(WORLD_WIDTH / 2, 562 + VOFFSET, WORLD_WIDTH, 10, 0x52c41a);
 
     // ============== 浮きプラットフォーム (なだらかな階段配置) ==============
     // ground top = y560. max jump = 182. なので高さ差 60-90px は楽々
@@ -507,10 +540,10 @@ class GameScene extends Phaser.Scene {
       { x: 1060, y: 425, w: 160 },  // D: 中継 (下り)
       { x: 1320, y: 485, w: 160 }   // E: 低い → 「ん」
     ];
-    platformList.forEach(p => this.makeStaticPlatform(p.x, p.y, p.w, 22, 0xa0673e));
+    platformList.forEach(p => this.makeStaticPlatform(p.x, p.y + VOFFSET, p.w, 22, 0xa0673e));
 
     // プレイヤー
-    this.player = this.add.rectangle(80, 480, 40, 56, 0xff6b6b);
+    this.player = this.add.rectangle(80, 480 + VOFFSET, 40, 56, 0xff6b6b);
     this.player.setStrokeStyle(3, 0xc92a2a);
     this.physics.add.existing(this.player);
     this.player.body.setCollideWorldBounds(true);
@@ -533,7 +566,7 @@ class GameScene extends Phaser.Scene {
       { char: 'ん', x: 800,  y: 294 },  // platform C の上 (top354 - 60) ← 2番目
       { char: 'ご', x: 1320, y: 414 }   // platform E の上 (top474 - 60) ← 最後
     ];
-    placement.forEach(item => this.createHiragana(item.char, item.x, item.y));
+    placement.forEach(item => this.createHiragana(item.char, item.x, item.y + VOFFSET));
 
     this.physics.add.overlap(this.player, this.hiraganaGroup, this.collectHiragana, null, this);
 
@@ -712,17 +745,18 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: panel, scale: 1, duration: 450, ease: 'Back.easeOut'
     });
-    const word = this.add.text(GAME_WIDTH / 2, 180, TARGET_WORD.join(''), {
+    const cy = GAME_HEIGHT / 2;   // パネル中心 (画面サイズに追従)
+    const word = this.add.text(GAME_WIDTH / 2, cy - 120, TARGET_WORD.join(''), {
       fontSize: '78px', color: '#ff6b6b',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
     }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
-    const emoji = this.add.text(GAME_WIDTH / 2, 320, TARGET_EMOJI, { fontSize: '140px' })
+    const emoji = this.add.text(GAME_WIDTH / 2, cy + 20, TARGET_EMOJI, { fontSize: '140px' })
       .setOrigin(0.5).setScrollFactor(0).setAlpha(0);
-    const btnBg = this.add.rectangle(GAME_WIDTH / 2, 470, 240, 64, 0xff6b6b);
+    const btnBg = this.add.rectangle(GAME_WIDTH / 2, cy + 170, 240, 64, 0xff6b6b);
     btnBg.setStrokeStyle(3, 0xc92a2a);
     btnBg.setScrollFactor(0).setAlpha(0);
     btnBg.setInteractive({ useHandCursor: true });
-    const btnText = this.add.text(GAME_WIDTH / 2, 470, 'もういちど', {
+    const btnText = this.add.text(GAME_WIDTH / 2, cy + 170, 'もういちど', {
       fontSize: '30px', color: '#ffffff',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
     }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
