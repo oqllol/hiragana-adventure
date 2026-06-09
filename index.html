@@ -577,6 +577,7 @@ class GameScene extends Phaser.Scene {
   create() {
     this.collectedIndex = 0;
     this.gameWon = false;
+    this._advanced = false;
     this.wordDisplayTexts = [];
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, GAME_HEIGHT);
@@ -796,6 +797,12 @@ class GameScene extends Phaser.Scene {
     // クリア音 (ファンファーレのみ)
     bgm.playFanfare();
 
+    // カメラのスクロールを0に戻す。
+    // scrollFactor(0)の固定UIは、カメラがスクロールしているとタップ判定の位置がズレて
+    // 押せなくなるため(背景はオーバーレイで覆われ見た目には影響しない)。
+    this.cameras.main.stopFollow();
+    this.cameras.main.setScroll(0, 0);
+
     const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
     overlay.setScrollFactor(0);
     const panelW = Math.min(GAME_WIDTH - 24, 520);  // 狭い画面でも収まる幅
@@ -827,9 +834,18 @@ class GameScene extends Phaser.Scene {
       alpha: 1, duration: 400, delay: 300
     });
     this.time.delayedCall(1200, () => this.speak(this.word.join('')));
-    btnBg.on('pointerdown', () => {
+    // 次へ進む処理 (ボタンでも、画面のどこをタップしてもOK。幼児が押しやすいように)
+    const advance = () => {
+      if (this._advanced) return;
+      this._advanced = true;
       if (hasNext) this.scene.start('GameScene', { stage: this.stageIndex + 1 });
       else this.scene.start('TitleScene');
+    };
+    btnBg.on('pointerdown', advance);
+    // 演出が見えてから(誤タップ防止)、画面全体をタップ受付にする
+    this.time.delayedCall(700, () => {
+      overlay.setInteractive();
+      overlay.on('pointerdown', advance);
     });
     // 紙吹雪
     for (let i = 0; i < 50; i++) {
