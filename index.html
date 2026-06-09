@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="ひらがな">
 <meta name="theme-color" content="#ffe5ec">
 <title>ひらがなアドベンチャー</title>
@@ -104,7 +104,7 @@
       max-width: none;
       margin: 0;
       align-items: center;
-      padding: 8px calc(18px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+      padding: 8px calc(18px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
       background: #ffe9c7;
       z-index: 50;
     }
@@ -129,11 +129,50 @@
     transition: transform 0.1s;
   }
   #btn-mute:active { transform: scale(0.92); }
+
+  /* 「ホーム画面に追加」案内バナー (ブラウザ起動時のみJSで表示) */
+  #a2hs-banner {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 94vw;
+    z-index: 200;
+    background: #fff;
+    color: #5c3a00;
+    border: 2px solid #ffd93d;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  #a2hs-banner.show { display: flex; }
+  #a2hs-banner .a2hs-text { flex: 1; }
+  #a2hs-banner .a2hs-close {
+    flex: none;
+    border: none;
+    background: #ffe9c7;
+    color: #5c3a00;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    font-size: 18px; font-weight: 900;
+    font-family: inherit;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
 <h1>🌟 ひらがなアドベンチャー 🌟</h1>
 <button id="btn-mute" aria-label="ミュート">🔊</button>
+<div id="a2hs-banner" role="note">
+  <span class="a2hs-text">📲 「ホームがめんに ついか」すると ぜんがめんで あそべるよ（したの URLバーが きえます）</span>
+  <button class="a2hs-close" id="a2hs-close" aria-label="とじる">×</button>
+</div>
 <div id="game-container"></div>
 <div id="mobile-controls">
   <div class="control-group">
@@ -966,6 +1005,23 @@ muteBtn.addEventListener('click', () => {
   const muted = bgm.toggleMute();
   muteBtn.textContent = muted ? '🔇' : '🔊';
 });
+
+// 「ホーム画面に追加」案内: ブラウザ(非スタンドアロン)のタッチ端末でのみ表示。
+// ホーム画面から起動するとURLバーが消えるため、誤タッチ対策の案内を出す。
+(function () {
+  const banner = document.getElementById('a2hs-banner');
+  if (!banner) return;
+  const isStandalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  const dismissed = (function () { try { return localStorage.getItem('a2hsDismissed') === '1'; } catch (e) { return false; } })();
+  if (!isStandalone && IS_TOUCH && !dismissed) {
+    banner.classList.add('show');
+  }
+  document.getElementById('a2hs-close').addEventListener('click', () => {
+    banner.classList.remove('show');
+    try { localStorage.setItem('a2hsDismissed', '1'); } catch (e) {}
+  });
+})();
 
 if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(() => new Phaser.Game(config));
