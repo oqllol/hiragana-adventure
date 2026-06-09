@@ -451,12 +451,14 @@ class TitleScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x5A3A1B);
     this.add.rectangle(GAME_WIDTH / 2, 562 + vo, GAME_WIDTH, 10, 0x52c41a);
 
-    const titleSize = GAME_WIDTH < 600 ? 46 : 52;  // 狭い画面でも横にはみ出さない
-    this.add.text(GAME_WIDTH / 2, 160 + mo, 'ひらがなで\nことばを つくろう！', {
-      fontSize: titleSize + 'px', color: '#ff6b6b',
+    // 各行を短くし、それでも幅を超える場合は自動で縮小して確実に画面内に収める
+    const titleText = this.add.text(GAME_WIDTH / 2, 150 + mo, 'ひらがなで\nことばを\nつくろう！', {
+      fontSize: '52px', color: '#ff6b6b',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900',
       align: 'center', stroke: '#ffffff', strokeThickness: 8
     }).setOrigin(0.5);
+    const titleMaxW = GAME_WIDTH - 32;
+    if (titleText.width > titleMaxW) titleText.setScale(titleMaxW / titleText.width);
 
     const wordBg = this.add.rectangle(GAME_WIDTH / 2, 340 + mo, 260, 90, 0xffffff);
     wordBg.setStrokeStyle(5, 0xffd93d);
@@ -484,10 +486,14 @@ class TitleScene extends Phaser.Scene {
     });
 
     btnBg.on('pointerdown', () => {
+      // iOS: ユーザー操作中に一度発話して読み上げ機能をロック解除する。
+      // volume:0 だと iOS では解除されないことがあるため、無音に近い空白を通常音量で発話する。
       if ('speechSynthesis' in window) {
         try {
+          loadVoices();
+          speechSynthesis.cancel();
           const u = new SpeechSynthesisUtterance(' ');
-          u.volume = 0; u.lang = 'ja-JP';
+          u.lang = 'ja-JP';
           speechSynthesis.speak(u);
         } catch (e) {}
       }
@@ -795,7 +801,9 @@ class GameScene extends Phaser.Scene {
   speak(text) {
     if (!('speechSynthesis' in window)) return;
     try {
-      speechSynthesis.cancel();
+      // iOS: cancel() の直後に speak() すると発話ごとキャンセルされることがあるため、
+      // 実際に発話中/待機中のときだけ止める。
+      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'ja-JP';
       const jaVoice = getJapaneseVoice();
