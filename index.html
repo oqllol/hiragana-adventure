@@ -821,10 +821,10 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5).setScrollFactor(0).setAlpha(0);
     // 次のステージがあれば「つぎへ」、最後なら「もういちど」(最初に戻る)
     const hasNext = this.stageIndex + 1 < STAGES.length;
+    // ボタンは見た目の目印。入力は画面全体(overlay)で受けるので setInteractive はしない。
     const btnBg = this.add.rectangle(GAME_WIDTH / 2, cy + 170, 240, 64, 0xff6b6b);
     btnBg.setStrokeStyle(3, 0xc92a2a);
     btnBg.setScrollFactor(0).setAlpha(0);
-    btnBg.setInteractive({ useHandCursor: true });
     const btnText = this.add.text(GAME_WIDTH / 2, cy + 170, hasNext ? 'つぎへ' : 'もういちど', {
       fontSize: '30px', color: '#ffffff',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
@@ -834,17 +834,16 @@ class GameScene extends Phaser.Scene {
       alpha: 1, duration: 400, delay: 300
     });
     this.time.delayedCall(1200, () => this.speak(this.word.join('')));
-    // 次へ進む処理 (ボタンでも、画面のどこをタップしてもOK。幼児が押しやすいように)
+    // 次へ進む処理。ボタンを含め「画面のどこをタップしてもOK」(固定UIのタップ判定ズレを完全に回避)。
     const advance = () => {
       if (this._advanced) return;
       this._advanced = true;
       if (hasNext) this.scene.start('GameScene', { stage: this.stageIndex + 1 });
       else this.scene.start('TitleScene');
     };
-    btnBg.on('pointerdown', advance);
     // 演出が見えてから(誤タップ防止)、画面全体をタップ受付にする
-    this.time.delayedCall(700, () => {
-      overlay.setInteractive();
+    this.time.delayedCall(600, () => {
+      overlay.setInteractive({ useHandCursor: true });
       overlay.on('pointerdown', advance);
     });
     // 紙吹雪
