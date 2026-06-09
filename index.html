@@ -82,14 +82,15 @@
   }
   #btn-jump:active { box-shadow: 0 2px 0 #f59f00, 0 4px 6px rgba(0,0,0,0.12); }
   @media (max-width: 900px), (pointer: coarse) {
-    /* スマホ: ゲームを画面いっぱいに表示し、ボタンは画面上に重ねる */
-    body { padding: 0; justify-content: flex-start; }
+    /* スマホ: ゲームは上の領域いっぱいに表示し、操作ボタンは下の専用エリアに置く */
+    body { padding: 0; height: 100dvh; justify-content: flex-start; }
     h1, .hint { display: none; }
     #game-container {
       border-radius: 0;
       box-shadow: none;
       width: 100vw;
-      min-height: 100dvh;
+      flex: 1 1 auto;
+      min-height: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -98,17 +99,15 @@
     #game-container canvas { border-radius: 0; }
     #mobile-controls {
       display: flex;
-      position: fixed;
-      left: 0; right: 0;
-      bottom: calc(10px + env(safe-area-inset-bottom));
-      width: auto;
+      position: static;
+      width: 100vw;
       max-width: none;
-      margin-top: 0;
-      padding: 0 calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left));
+      margin: 0;
+      align-items: center;
+      padding: 8px calc(18px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+      background: #ffe9c7;
       z-index: 50;
-      pointer-events: none;
     }
-    .mobile-btn { pointer-events: auto; opacity: 0.9; }
   }
   .hint { margin-top: 10px; font-size: 13px; color: #888; }
   
@@ -154,12 +153,18 @@
    Aコンセプト: 単語づくりステージ
    ============================================================ */
 
-const GAME_WIDTH = 800;
+// スマホ(タッチ端末)では設計解像度の横幅を半分(400)にして、画面上での見た目を約2倍に拡大する。
+// CSSのメディアクエリ (max-width:900px, pointer:coarse) と条件を一致させる。
+const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+const GAME_WIDTH = IS_TOUCH ? 400 : 800;
 const BASE_HEIGHT = 600;
-// スマホ縦持ちでも余白なく画面を埋めるため、画面の縦横比から描画高さを決める。
+// スマホは下部の操作エリア(ストリップ)を除いた領域に合わせて高さを決める。
 // 増えた分(VOFFSET)は上部の空にして、地面・足場・プレイヤーは画面下に寄せる。
-const _ar = window.innerHeight / Math.max(window.innerWidth, 1);
-const GAME_HEIGHT = Math.max(BASE_HEIGHT, Math.min(1600, Math.round(GAME_WIDTH * _ar)));
+const CONTROL_STRIP = IS_TOUCH ? 130 : 0;
+const GAME_HEIGHT = IS_TOUCH
+  ? Math.max(BASE_HEIGHT, Math.min(1400,
+      Math.round(GAME_WIDTH * (window.innerHeight - CONTROL_STRIP) / Math.max(window.innerWidth, 1))))
+  : BASE_HEIGHT;
 const VOFFSET = GAME_HEIGHT - BASE_HEIGHT;
 const WORLD_WIDTH = 1600;
 
@@ -446,8 +451,9 @@ class TitleScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x5A3A1B);
     this.add.rectangle(GAME_WIDTH / 2, 562 + vo, GAME_WIDTH, 10, 0x52c41a);
 
+    const titleSize = GAME_WIDTH < 600 ? 46 : 52;  // 狭い画面でも横にはみ出さない
     this.add.text(GAME_WIDTH / 2, 160 + mo, 'ひらがなで\nことばを つくろう！', {
-      fontSize: '52px', color: '#ff6b6b',
+      fontSize: titleSize + 'px', color: '#ff6b6b',
       fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900',
       align: 'center', stroke: '#ffffff', strokeThickness: 8
     }).setOrigin(0.5);
@@ -660,7 +666,7 @@ class GameScene extends Phaser.Scene {
   }
 
   createWordDisplay() {
-    const panel = this.add.rectangle(GAME_WIDTH / 2, 50, 380, 84, 0xffffff, 0.95);
+    const panel = this.add.rectangle(GAME_WIDTH / 2, 50, IS_TOUCH ? GAME_WIDTH - 24 : 380, 84, 0xffffff, 0.95);
     panel.setStrokeStyle(4, 0xff6b6b);
     panel.setScrollFactor(0);
     this.add.text(GAME_WIDTH / 2, 22, 'あつめるよ', {
@@ -739,7 +745,8 @@ class GameScene extends Phaser.Scene {
 
     const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
     overlay.setScrollFactor(0);
-    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 520, 460, 0xffffff);
+    const panelW = Math.min(GAME_WIDTH - 24, 520);  // 狭い画面でも収まる幅
+    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, 460, 0xffffff);
     panel.setStrokeStyle(6, 0xff6b6b);
     panel.setScrollFactor(0).setScale(0);
     this.tweens.add({
