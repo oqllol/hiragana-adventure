@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ひらがな">
+<meta name="theme-color" content="#ffe5ec">
+<title>ひらがなアドベンチャー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; overscroll-behavior: none; }
+  body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    min-height: 100dvh;
+    background: linear-gradient(180deg, #ffe5ec 0%, #fff5d6 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Zen Maru Gothic', system-ui, sans-serif;
+    padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+  h1 {
+    margin: 0 0 12px 0;
+    color: #ff6b6b;
+    font-size: 22px;
+    font-weight: 900;
+    text-shadow: 2px 2px 0 #fff, 4px 4px 0 rgba(0,0,0,0.08);
+    letter-spacing: 1px;
+  }
+  #game-container {
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 10px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.1);
+    max-width: 100%;
+    line-height: 0;
+  }
+  #game-container canvas {
+    display: block;
+    max-width: 100%;
+    height: auto !important;
+    border-radius: 18px;
+  }
+  #mobile-controls {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 800px;
+    margin-top: 18px;
+    padding: 0 8px;
+  }
+  .control-group { display: flex; gap: 14px; }
+  .mobile-btn {
+    width: 72px; height: 72px;
+    border: none; border-radius: 50%;
+    background: #ff6b6b; color: white;
+    font-size: 32px; font-weight: 900;
+    box-shadow: 0 5px 0 #c92a2a, 0 8px 12px rgba(0,0,0,0.12);
+    cursor: pointer; touch-action: manipulation;
+    font-family: inherit;
+    transition: transform 0.08s, box-shadow 0.08s;
+  }
+  .mobile-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 #c92a2a, 0 4px 6px rgba(0,0,0,0.12);
+  }
+  #btn-jump {
+    background: #ffd93d; color: #5c3a00;
+    box-shadow: 0 5px 0 #f59f00, 0 8px 12px rgba(0,0,0,0.12);
+  }
+  #btn-jump:active { box-shadow: 0 2px 0 #f59f00, 0 4px 6px rgba(0,0,0,0.12); }
+  @media (max-width: 900px), (pointer: coarse) {
+    #mobile-controls { display: flex; }
+  }
+  .hint { margin-top: 10px; font-size: 13px; color: #888; }
+  
+  /* ミュートボタン */
+  #btn-mute {
+    position: fixed;
+    top: calc(14px + env(safe-area-inset-top));
+    right: calc(14px + env(safe-area-inset-right));
+    width: 46px;
+    height: 46px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.92);
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.12);
+    z-index: 100;
+    font-family: inherit;
+    transition: transform 0.1s;
+  }
+  #btn-mute:active { transform: scale(0.92); }
+</style>
+</head>
+<body>
+<h1>🌟 ひらがなアドベンチャー 🌟</h1>
+<button id="btn-mute" aria-label="ミュート">🔊</button>
+<div id="game-container"></div>
+<div id="mobile-controls">
+  <div class="control-group">
+    <button class="mobile-btn" id="btn-left">←</button>
+    <button class="mobile-btn" id="btn-right">→</button>
+  </div>
+  <div class="control-group">
+    <button class="mobile-btn" id="btn-jump">↑</button>
+  </div>
+</div>
+<p class="hint">PC: ← → で移動 / ↑ または スペース でジャンプ</p>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script>
+/* ============================================================
+   ひらがなアドベンチャー
+   Aコンセプト: 単語づくりステージ
+   ============================================================ */
+
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+const WORLD_WIDTH = 1600;
+
+const TARGET_WORD = ['り', 'ん', 'ご'];
+const TARGET_EMOJI = '🍎';
+
+// プレイヤー物理 (子供向けに緩め)
+const GRAVITY = 800;
+const JUMP_VELOCITY = -540;  // max jump height ≈ 182px
+const MOVE_SPEED = 230;
+
+const mobileInput = { left: false, right: false, jump: false };
+
+/* ============================================================
+   音声読み上げ用: 日本語ボイスを事前に読み込む
+   (iOS Safari は getVoices() が非同期で空のことがあるため)
+   ============================================================ */
+let cachedVoices = [];
+function loadVoices() {
+  if (!('speechSynthesis' in window)) return;
+  cachedVoices = speechSynthesis.getVoices() || [];
+}
+if ('speechSynthesis' in window) {
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+function getJapaneseVoice() {
+  if (!cachedVoices.length) loadVoices();
+  return cachedVoices.find(v => v.lang === 'ja-JP') ||
+         cachedVoices.find(v => v.lang && v.lang.toLowerCase().startsWith('ja')) ||
+         null;
+}
+
+/* ============================================================
+   BGM (Web Audio API で生成 - 著作権フリー)
+   ============================================================ */
+class BGM {
+  constructor() {
+    this.ctx = null;
+    this.masterGain = null;
+    this.playing = false;
+    this.muted = false;
+    this.timeoutId = null;
+    this.targetVolume = 0.07;
+  }
+
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = 0;
+    // やわらかい音にするためローパスフィルター
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2400;
+    this.masterGain.connect(filter);
+    filter.connect(this.ctx.destination);
+  }
+
+  start() {
+    this.init();
+    if (!this.ctx || this.playing) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    this.playing = true;
+    const now = this.ctx.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.linearRampToValueAtTime(
+      this.muted ? 0 : this.targetVolume, now + 1.8
+    );
+    this.scheduleLoop();
+  }
+
+  scheduleLoop() {
+    if (!this.playing || !this.ctx) return;
+    const now = this.ctx.currentTime + 0.05;
+    const beat = 0.45;
+    // C - G - Am - F の進行 (やさしい王道)
+    const chords = [
+      { arp: [523.25, 659.25, 783.99, 659.25], bass: 130.81 }, // C: C E G E
+      { arp: [392.00, 493.88, 587.33, 493.88], bass: 196.00 }, // G: G B D B
+      { arp: [440.00, 523.25, 659.25, 523.25], bass: 220.00 }, // Am: A C E C
+      { arp: [349.23, 440.00, 523.25, 440.00], bass: 174.61 }  // F: F A C A
+    ];
+    chords.forEach((chord, ci) => {
+      this.playBass(chord.bass, now + ci * 4 * beat, 4 * beat * 0.95);
+      chord.arp.forEach((freq, ni) => {
+        this.playArp(freq, now + (ci * 4 + ni) * beat, beat * 0.85);
+      });
+    });
+    const loopDuration = chords.length * 4 * beat;
+    this.timeoutId = setTimeout(() => this.scheduleLoop(), loopDuration * 1000 - 80);
+  }
+
+  playArp(freq, startTime, duration) {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, startTime);
+    g.gain.linearRampToValueAtTime(0.4, startTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(g);
+    g.connect(this.masterGain);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.05);
+  }
+
+  playBass(freq, startTime, duration) {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, startTime);
+    g.gain.linearRampToValueAtTime(0.28, startTime + 0.1);
+    g.gain.setValueAtTime(0.22, startTime + duration * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(g);
+    g.connect(this.masterGain);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.05);
+  }
+
+  // 音声読み上げ中はBGMを一時的に下げる
+  duck() {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.linearRampToValueAtTime(this.targetVolume * 0.25, now + 0.12);
+  }
+  unduck() {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.linearRampToValueAtTime(this.targetVolume, now + 0.5);
+  }
+
+  // クリア時: ファンファーレ
+  playFanfare() {
+    this.init();
+    if (!this.ctx || this.muted) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    const now = this.ctx.currentTime;
+    const out = this.ctx.createGain();
+    out.gain.value = 0.22;
+    out.connect(this.ctx.destination);
+    const notes = [
+      { f: 523.25,  t: 0.00, d: 0.16 }, // C5
+      { f: 659.25,  t: 0.13, d: 0.16 }, // E5
+      { f: 783.99,  t: 0.26, d: 0.16 }, // G5
+      { f: 1046.50, t: 0.39, d: 0.60 }  // C6 (のばす)
+    ];
+    notes.forEach(n => {
+      const st = now + n.t;
+      // メイン (三角波)
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = n.f;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0, st);
+      g.gain.linearRampToValueAtTime(0.35, st + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, st + n.d);
+      osc.connect(g); g.connect(out);
+      osc.start(st); osc.stop(st + n.d + 0.05);
+      // 1オクターブ上をうっすら重ねてキラキラに
+      const osc2 = this.ctx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.value = n.f * 2;
+      const g2 = this.ctx.createGain();
+      g2.gain.setValueAtTime(0, st);
+      g2.gain.linearRampToValueAtTime(0.12, st + 0.02);
+      g2.gain.exponentialRampToValueAtTime(0.001, st + n.d);
+      osc2.connect(g2); g2.connect(out);
+      osc2.start(st); osc2.stop(st + n.d + 0.05);
+    });
+  }
+
+  // クリア時: 拍手＋歓声 (ノイズ合成)
+  playApplause(duration = 3.2) {
+    this.init();
+    if (!this.ctx || this.muted) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    const now = this.ctx.currentTime;
+
+    // 拍手1発分の短いノイズ素材
+    const clapLen = Math.floor(this.ctx.sampleRate * 0.05);
+    const clapBuf = this.ctx.createBuffer(1, clapLen, this.ctx.sampleRate);
+    const cd = clapBuf.getChannelData(0);
+    for (let i = 0; i < clapLen; i++) cd[i] = Math.random() * 2 - 1;
+
+    const out = this.ctx.createGain();
+    out.gain.value = 0.30;
+    out.connect(this.ctx.destination);
+
+    // 個々の拍手をたくさんスケジュール (立ち上がり→持続→フェード)
+    const clapsPerSec = 38;
+    const total = Math.floor(duration * clapsPerSec);
+    for (let i = 0; i < total; i++) {
+      const t = now + (i / clapsPerSec) + (Math.random() * 0.025);
+      const prog = (t - now) / duration;
+      let intensity = 1;
+      if (prog < 0.12) intensity = prog / 0.12;
+      else if (prog > 0.72) intensity = (1 - prog) / 0.28;
+      intensity = Math.max(0, Math.min(1, intensity));
+      this._oneClap(clapBuf, t, intensity, out);
+    }
+
+    // 歓声っぽいザワザワしたノイズベッド (拍手より短く切り上げる)
+    const bedDuration = 1.4;
+    const bedBuf = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+    const bd = bedBuf.getChannelData(0);
+    for (let i = 0; i < bd.length; i++) bd[i] = Math.random() * 2 - 1;
+    const bedSrc = this.ctx.createBufferSource();
+    bedSrc.buffer = bedBuf;
+    bedSrc.loop = true;
+    const bedFilter = this.ctx.createBiquadFilter();
+    bedFilter.type = 'bandpass';
+    bedFilter.frequency.value = 1300;
+    bedFilter.Q.value = 0.4;
+    const bedGain = this.ctx.createGain();
+    bedGain.gain.setValueAtTime(0, now);
+    bedGain.gain.linearRampToValueAtTime(0.07, now + 0.3);
+    bedGain.gain.setValueAtTime(0.07, now + bedDuration - 0.5);
+    bedGain.gain.linearRampToValueAtTime(0, now + bedDuration);
+    bedSrc.connect(bedFilter); bedFilter.connect(bedGain);
+    bedGain.connect(this.ctx.destination);
+    bedSrc.start(now); bedSrc.stop(now + bedDuration + 0.1);
+  }
+
+  _oneClap(buf, startTime, intensity, dest) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 900 + Math.random() * 1600;
+    filter.Q.value = 0.7;
+    const g = this.ctx.createGain();
+    const vol = (0.12 + Math.random() * 0.16) * intensity;
+    g.gain.setValueAtTime(0, startTime);
+    g.gain.linearRampToValueAtTime(vol, startTime + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + 0.025 + Math.random() * 0.02);
+    src.connect(filter); filter.connect(g); g.connect(dest);
+    src.start(startTime); src.stop(startTime + 0.08);
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.ctx && this.masterGain) {
+      const now = this.ctx.currentTime;
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+      this.masterGain.gain.linearRampToValueAtTime(
+        this.muted ? 0 : this.targetVolume, now + 0.3
+      );
+    }
+    return this.muted;
+  }
+}
+
+const bgm = new BGM();
+
+/* ============================================================
+   タイトル画面
+   ============================================================ */
+class TitleScene extends Phaser.Scene {
+  constructor() { super('TitleScene'); }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#9bd6f5');
+    for (let i = 0; i < 5; i++) {
+      const x = 80 + i * 160 + Math.random() * 40;
+      const y = 70 + Math.random() * 70;
+      this.drawCloud(x, y);
+    }
+    this.add.rectangle(GAME_WIDTH / 2, 580, GAME_WIDTH, 40, 0x8B5A2B)
+      .setStrokeStyle(2, 0x5A3A1B);
+    this.add.rectangle(GAME_WIDTH / 2, 562, GAME_WIDTH, 10, 0x52c41a);
+
+    this.add.text(GAME_WIDTH / 2, 160, 'ひらがなで\nことばを つくろう！', {
+      fontSize: '52px', color: '#ff6b6b',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900',
+      align: 'center', stroke: '#ffffff', strokeThickness: 8
+    }).setOrigin(0.5);
+
+    const wordBg = this.add.rectangle(GAME_WIDTH / 2, 340, 260, 90, 0xffffff);
+    wordBg.setStrokeStyle(5, 0xffd93d);
+    this.add.text(GAME_WIDTH / 2, 340, TARGET_WORD.join(''), {
+      fontSize: '54px', color: '#5c3a00',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+    }).setOrigin(0.5);
+    this.add.text(GAME_WIDTH / 2, 410, '↑ この ことばを あつめよう', {
+      fontSize: '22px', color: '#333',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '700'
+    }).setOrigin(0.5);
+
+    const btnBg = this.add.rectangle(GAME_WIDTH / 2, 500, 260, 76, 0xff6b6b);
+    btnBg.setStrokeStyle(4, 0xc92a2a);
+    btnBg.setInteractive({ useHandCursor: true });
+    const btnText = this.add.text(GAME_WIDTH / 2, 500, 'はじめる', {
+      fontSize: '34px', color: '#ffffff',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: [btnBg, btnText],
+      scale: 1.06, duration: 700,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+    });
+
+    btnBg.on('pointerdown', () => {
+      if ('speechSynthesis' in window) {
+        try {
+          const u = new SpeechSynthesisUtterance(' ');
+          u.volume = 0; u.lang = 'ja-JP';
+          speechSynthesis.speak(u);
+        } catch (e) {}
+      }
+      bgm.start();
+      this.scene.start('GameScene');
+    });
+  }
+
+  drawCloud(x, y) {
+    this.add.circle(x, y, 28, 0xffffff, 0.95);
+    this.add.circle(x + 24, y - 10, 24, 0xffffff, 0.95);
+    this.add.circle(x + 48, y, 28, 0xffffff, 0.95);
+  }
+}
+
+/* ============================================================
+   ゲーム本体
+   ============================================================ */
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    this.collectedIndex = 0;
+    this.gameWon = false;
+    this.wordDisplayTexts = [];
+
+    this.physics.world.setBounds(0, 0, WORLD_WIDTH, GAME_HEIGHT);
+    this.add.rectangle(WORLD_WIDTH / 2, GAME_HEIGHT / 2, WORLD_WIDTH, GAME_HEIGHT, 0x9bd6f5);
+
+    // 遠景の丘
+    for (let i = 0; i < 7; i++) {
+      this.add.ellipse(i * 260 + 100, 555, 340, 170, 0x8FBC8F, 0.55);
+    }
+    // 雲
+    for (let i = 0; i < 12; i++) {
+      const x = Math.random() * WORLD_WIDTH;
+      const y = 40 + Math.random() * 130;
+      this.add.circle(x, y, 28, 0xffffff, 0.9);
+      this.add.circle(x + 24, y - 10, 24, 0xffffff, 0.9);
+      this.add.circle(x + 48, y, 28, 0xffffff, 0.9);
+    }
+
+    this.platforms = this.physics.add.staticGroup();
+    // 地面
+    for (let x = 0; x < WORLD_WIDTH; x += 80) {
+      this.makeStaticPlatform(x + 40, 580, 80, 40, 0x8B5A2B);
+    }
+    this.add.rectangle(WORLD_WIDTH / 2, 562, WORLD_WIDTH, 10, 0x52c41a);
+
+    // ============== 浮きプラットフォーム (なだらかな階段配置) ==============
+    // ground top = y560. max jump = 182. なので高さ差 60-90px は楽々
+    const platformList = [
+      { x: 280,  y: 485, w: 160 },  // A: 低い (ground+95) → 「ご」
+      { x: 540,  y: 425, w: 160 },  // B: 中継
+      { x: 800,  y: 365, w: 160 },  // C: 高い → 「り」
+      { x: 1060, y: 425, w: 160 },  // D: 中継 (下り)
+      { x: 1320, y: 485, w: 160 }   // E: 低い → 「ん」
+    ];
+    platformList.forEach(p => this.makeStaticPlatform(p.x, p.y, p.w, 22, 0xa0673e));
+
+    // プレイヤー
+    this.player = this.add.rectangle(80, 480, 40, 56, 0xff6b6b);
+    this.player.setStrokeStyle(3, 0xc92a2a);
+    this.physics.add.existing(this.player);
+    this.player.body.setCollideWorldBounds(true);
+    this.physics.add.collider(this.player, this.platforms);
+
+    // 目 (装飾)
+    this.playerEyeL = this.add.circle(this.player.x - 8, this.player.y - 10, 4, 0xffffff);
+    this.playerEyeR = this.add.circle(this.player.x + 8, this.player.y - 10, 4, 0xffffff);
+    this.playerPupilL = this.add.circle(this.player.x - 8, this.player.y - 10, 2, 0x000000);
+    this.playerPupilR = this.add.circle(this.player.x + 8, this.player.y - 10, 2, 0x000000);
+
+    // ============== ひらがな配置 ==============
+    // 各プラットフォーム真上 60px (ジャンプで届く・楽に取れる)
+    // 順番は り→ん→ご だが、配置はバラバラ (読んで判断する)
+    this.hiraganaGroup = this.physics.add.group({
+      allowGravity: false, immovable: true
+    });
+    const placement = [
+      { char: 'り', x: 280,  y: 414 },  // platform A の上 (top474 - 60) ← 最初に取る
+      { char: 'ん', x: 800,  y: 294 },  // platform C の上 (top354 - 60) ← 2番目
+      { char: 'ご', x: 1320, y: 414 }   // platform E の上 (top474 - 60) ← 最後
+    ];
+    placement.forEach(item => this.createHiragana(item.char, item.x, item.y));
+
+    this.physics.add.overlap(this.player, this.hiraganaGroup, this.collectHiragana, null, this);
+
+    // 「次に取るべき文字」の矢印インジケータ
+    this.arrow = this.add.text(0, 0, '▼', {
+      fontSize: '36px', color: '#ff6b6b',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+    }).setOrigin(0.5);
+    this.updateArrow();
+
+    // カメラ
+    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, GAME_HEIGHT);
+    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+
+    this.createWordDisplay();
+
+    // ヒント
+    const hint = this.add.text(GAME_WIDTH / 2, 200, 'じゅんばんに あつめてね', {
+      fontSize: '24px', color: '#333',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '700',
+      backgroundColor: '#ffffff', padding: { x: 18, y: 10 }
+    }).setOrigin(0.5).setScrollFactor(0);
+    this.tweens.add({
+      targets: hint, alpha: 0, delay: 2800, duration: 700,
+      onComplete: () => hint.destroy()
+    });
+
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // ゲーム開始時にお題を読み上げる
+    this.time.delayedCall(500, () => this.speak(TARGET_WORD.join('')));
+  }
+
+  makeStaticPlatform(x, y, w, h, color) {
+    const rect = this.add.rectangle(x, y, w, h, color);
+    rect.setStrokeStyle(2, 0x5A3A1B);
+    this.physics.add.existing(rect, true);
+    this.platforms.add(rect);
+    return rect;
+  }
+
+  createHiragana(char, x, y) {
+    const block = this.add.rectangle(x, y, 68, 68, 0xffd93d);
+    block.setStrokeStyle(3, 0xf59f00);
+    const text = this.add.text(x, y, char, {
+      fontSize: '46px', color: '#5c3a00',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: [block, text],
+      y: y - 8, duration: 1200,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+    });
+
+    this.physics.add.existing(block);
+    block.body.setAllowGravity(false);
+    block.body.setImmovable(true);
+    block.charData = char;
+    block.charText = text;
+    block.collected = false;
+    this.hiraganaGroup.add(block);
+  }
+
+  // 次に取るべき文字の上に矢印を出す
+  updateArrow() {
+    if (!this.arrow) return;
+    if (this.collectedIndex >= TARGET_WORD.length) {
+      this.arrow.setVisible(false);
+      return;
+    }
+    const nextChar = TARGET_WORD[this.collectedIndex];
+    let target = null;
+    this.hiraganaGroup.children.iterate(block => {
+      if (block && block.charData === nextChar && !block.collected) {
+        target = block;
+      }
+    });
+    if (!target) { this.arrow.setVisible(false); return; }
+    this.arrow.setVisible(true);
+    this.arrowTarget = target;
+    // 跳ねるアニメ
+    if (!this.arrowTween) {
+      this.arrowTween = this.tweens.add({
+        targets: this.arrow,
+        y: '+=10', duration: 400,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+      });
+    }
+  }
+
+  createWordDisplay() {
+    const panel = this.add.rectangle(GAME_WIDTH / 2, 50, 380, 84, 0xffffff, 0.95);
+    panel.setStrokeStyle(4, 0xff6b6b);
+    panel.setScrollFactor(0);
+    this.add.text(GAME_WIDTH / 2, 22, 'あつめるよ', {
+      fontSize: '14px', color: '#888',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '700'
+    }).setOrigin(0.5).setScrollFactor(0);
+
+    const startX = GAME_WIDTH / 2 - ((TARGET_WORD.length - 1) * 56) / 2;
+    TARGET_WORD.forEach((char, i) => {
+      const txt = this.add.text(startX + i * 56, 62, char, {
+        fontSize: '40px', color: '#dddddd',
+        fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+      }).setOrigin(0.5).setScrollFactor(0);
+      this.wordDisplayTexts.push(txt);
+    });
+  }
+
+  collectHiragana(player, block) {
+    if (block.collected || this.gameWon) return;
+    if (block.charData === TARGET_WORD[this.collectedIndex]) {
+      // 正解
+      block.collected = true;
+      this.burstEffect(block.x, block.y, 0xffd93d);
+      const displayTxt = this.wordDisplayTexts[this.collectedIndex];
+      displayTxt.setColor('#ff6b6b');
+      this.tweens.add({
+        targets: displayTxt, scale: 1.45,
+        duration: 220, yoyo: true, ease: 'Back.easeOut'
+      });
+      this.speak(block.charData);
+      this.tweens.add({
+        targets: [block, block.charText],
+        scale: 0, alpha: 0, duration: 300,
+        onComplete: () => { block.destroy(); block.charText.destroy(); }
+      });
+      this.collectedIndex++;
+      this.updateArrow();
+      if (this.collectedIndex >= TARGET_WORD.length) {
+        this.gameWon = true;
+        this.time.delayedCall(700, () => this.showCelebration());
+      }
+    } else {
+      // 不正解 (やさしく弾く)
+      if (block.cooldown) return;
+      block.cooldown = true;
+      this.time.delayedCall(900, () => { block.cooldown = false; });
+      this.tweens.add({
+        targets: [block, block.charText],
+        x: '+=8', duration: 50, yoyo: true, repeat: 3
+      });
+      const dir = player.x < block.x ? -1 : 1;
+      player.body.setVelocityX(dir * 200);
+      player.body.setVelocityY(-200);
+      this.speak('ちがうよ');
+    }
+  }
+
+  burstEffect(x, y, color) {
+    for (let i = 0; i < 14; i++) {
+      const particle = this.add.circle(x, y, 6, color);
+      const angle = (i / 14) * Math.PI * 2;
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * 90,
+        y: y + Math.sin(angle) * 90,
+        alpha: 0, scale: 0, duration: 650,
+        ease: 'Cubic.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
+  showCelebration() {
+    // クリア音 (ファンファーレのみ)
+    bgm.playFanfare();
+
+    const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
+    overlay.setScrollFactor(0);
+    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 520, 460, 0xffffff);
+    panel.setStrokeStyle(6, 0xff6b6b);
+    panel.setScrollFactor(0).setScale(0);
+    this.tweens.add({
+      targets: panel, scale: 1, duration: 450, ease: 'Back.easeOut'
+    });
+    const word = this.add.text(GAME_WIDTH / 2, 180, TARGET_WORD.join(''), {
+      fontSize: '78px', color: '#ff6b6b',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+    }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
+    const emoji = this.add.text(GAME_WIDTH / 2, 320, TARGET_EMOJI, { fontSize: '140px' })
+      .setOrigin(0.5).setScrollFactor(0).setAlpha(0);
+    const btnBg = this.add.rectangle(GAME_WIDTH / 2, 470, 240, 64, 0xff6b6b);
+    btnBg.setStrokeStyle(3, 0xc92a2a);
+    btnBg.setScrollFactor(0).setAlpha(0);
+    btnBg.setInteractive({ useHandCursor: true });
+    const btnText = this.add.text(GAME_WIDTH / 2, 470, 'もういちど', {
+      fontSize: '30px', color: '#ffffff',
+      fontFamily: '"Zen Maru Gothic", sans-serif', fontStyle: '900'
+    }).setOrigin(0.5).setScrollFactor(0).setAlpha(0);
+    this.tweens.add({
+      targets: [word, emoji, btnBg, btnText],
+      alpha: 1, duration: 400, delay: 300
+    });
+    this.time.delayedCall(1200, () => this.speak(TARGET_WORD.join('')));
+    btnBg.on('pointerdown', () => this.scene.start('TitleScene'));
+    // 紙吹雪
+    for (let i = 0; i < 50; i++) {
+      this.time.delayedCall(i * 35, () => {
+        const colors = [0xff6b6b, 0xffd93d, 0x52c41a, 0x4dabf7, 0xda77f2];
+        const c = colors[Math.floor(Math.random() * colors.length)];
+        const conf = this.add.rectangle(
+          60 + Math.random() * (GAME_WIDTH - 120), -20,
+          8 + Math.random() * 10, 8 + Math.random() * 10, c
+        );
+        conf.setScrollFactor(0).setAngle(Math.random() * 360);
+        this.tweens.add({
+          targets: conf, y: GAME_HEIGHT + 20,
+          angle: '+=720', duration: 2000 + Math.random() * 1500,
+          ease: 'Cubic.easeIn', onComplete: () => conf.destroy()
+        });
+      });
+    }
+  }
+
+  speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP';
+      const jaVoice = getJapaneseVoice();
+      if (jaVoice) u.voice = jaVoice;
+      u.rate = 0.85;
+      u.pitch = 1.15;
+      // BGM を一時的に下げる
+      bgm.duck();
+      u.onend = () => bgm.unduck();
+      u.onerror = () => bgm.unduck();
+      speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn('Speech failed', e);
+      bgm.unduck();
+    }
+  }
+
+  update() {
+    if (!this.player || !this.player.body) return;
+
+    // 目をプレイヤーに追従
+    if (this.playerEyeL) {
+      this.playerEyeL.x = this.player.x - 8; this.playerEyeL.y = this.player.y - 10;
+      this.playerEyeR.x = this.player.x + 8; this.playerEyeR.y = this.player.y - 10;
+      this.playerPupilL.x = this.player.x - 8; this.playerPupilL.y = this.player.y - 10;
+      this.playerPupilR.x = this.player.x + 8; this.playerPupilR.y = this.player.y - 10;
+    }
+
+    // 矢印を次のターゲット文字の上に追従
+    if (this.arrow && this.arrow.visible && this.arrowTarget && this.arrowTarget.active) {
+      this.arrow.x = this.arrowTarget.x;
+      // ふわふわアニメで上下するためベース位置だけ更新
+      const baseY = this.arrowTarget.y - 60;
+      // tweenが y を ±10 で動かしているので、tween対象のbase yをここで更新する必要あり
+      // 簡易には絶対位置で再設定 (tweenとの兼ね合いで微振動するが許容)
+      if (!this._lastArrowY || Math.abs(this._lastArrowY - baseY) > 2) {
+        this.arrow.y = baseY;
+        this._lastArrowY = baseY;
+      }
+    }
+
+    if (this.gameWon) {
+      this.player.body.setVelocityX(0);
+      return;
+    }
+
+    const onGround = this.player.body.touching.down || this.player.body.blocked.down;
+    const leftPressed = this.cursors.left.isDown || mobileInput.left;
+    const rightPressed = this.cursors.right.isDown || mobileInput.right;
+    const jumpPressed = this.cursors.up.isDown || this.spaceKey.isDown || mobileInput.jump;
+
+    if (leftPressed) this.player.body.setVelocityX(-MOVE_SPEED);
+    else if (rightPressed) this.player.body.setVelocityX(MOVE_SPEED);
+    else this.player.body.setVelocityX(0);
+
+    if (jumpPressed && onGround) this.player.body.setVelocityY(JUMP_VELOCITY);
+  }
+}
+
+/* ============================================================
+   ゲーム起動
+   ============================================================ */
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game-container',
+  width: GAME_WIDTH,
+  height: GAME_HEIGHT,
+  backgroundColor: '#9bd6f5',
+  physics: {
+    default: 'arcade',
+    arcade: { gravity: { y: GRAVITY }, debug: false }
+  },
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_HORIZONTALLY
+  },
+  scene: [TitleScene, GameScene]
+};
+
+function setupMobileControls() {
+  const bind = (key, value) => (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    mobileInput[key] = value;
+  };
+  ['left', 'right', 'jump'].forEach(key => {
+    const btn = document.getElementById('btn-' + key);
+    if (!btn) return;
+    btn.addEventListener('touchstart', bind(key, true), { passive: false });
+    btn.addEventListener('touchend', bind(key, false));
+    btn.addEventListener('touchcancel', bind(key, false));
+    btn.addEventListener('mousedown', bind(key, true));
+    btn.addEventListener('mouseup', bind(key, false));
+    btn.addEventListener('mouseleave', bind(key, false));
+  });
+}
+setupMobileControls();
+
+// iOS: ピンチ/ダブルタップによる画面拡大を防止 (user-scalable=no が無視されるため)
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 350) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
+// ミュートボタン
+const muteBtn = document.getElementById('btn-mute');
+muteBtn.addEventListener('click', () => {
+  const muted = bgm.toggleMute();
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+});
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => new Phaser.Game(config));
+} else {
+  new Phaser.Game(config);
+}
+</script>
+</body>
+</html>
